@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plant Care</title>
+<style>
+:root{--bg:#fafaf8;--fg:#1c1c1a;--mut:#77776f;--ln:#e4e4de;--ac:#2f6f4f}
+@media(prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ececE6;--mut:#8d8d85;--ln:#2a2a27;--ac:#3f8f67}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+main{max-width:480px;margin:0 auto;padding:24px 16px}h1{font-size:18px;font-weight:600;margin:0 0 16px;display:flex;justify-content:space-between}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--ln);border:1px solid var(--ln);border-radius:10px;overflow:hidden;margin-bottom:16px}
+.g div{background:var(--bg);padding:12px}.g b{display:block;font-size:22px;font-weight:600}.g span,small{color:var(--mut);font-size:13px}
+button,input{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid var(--ln);background:var(--bg);color:var(--fg);width:100%}
+button{cursor:pointer;margin-bottom:8px}button.p{background:var(--ac);border-color:var(--ac);color:#fff}button:disabled{opacity:.5}
+.r{display:flex;gap:8px}.r button{margin:0 0 8px}input{margin-bottom:8px}
+ul{list-style:none;padding:0;margin:16px 0 0}li{padding:8px 0;border-top:1px solid var(--ln);display:flex;justify-content:space-between;gap:8px;font-size:14px}
+a{color:var(--mut);font-size:13px;cursor:pointer}
+</style></head><body><main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');let sb,token,timer;
+const L={water_auto:'Watered (scheduled)',water_manual:'Watered (manual)',water_skipped:'Watering skipped',shade_close:'Cover closed',shade_open:'Cover opened'};
+const api=(p,o={})=>fetch(p,{...o,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}}).then(r=>r.json());
+function login(){app.innerHTML=`<h1>Plant Care</h1><input id="e" type="email" placeholder="Email"><input id="p" type="password" placeholder="Password"><button class="p" id="go">Sign in</button><small id="m"></small>`;
+$('#go').onclick=async()=>{const{error}=await sb.auth.signInWithPassword({email:$('#e').value,password:$('#p').value});if(error)$('#m').textContent=error.message}}
+function dash(){if($('#dash'))return;app.innerHTML=`<div id="dash"><h1>Plant Care <a id="out">Sign out</a></h1><div class="g" id="t"></div>
+<button class="p" data-a="water">Water now</button><div class="r"><button data-a="cover">Cover</button><button data-a="uncover">Uncover</button></div>
+<small id="m"></small><ul id="ev"></ul></div>`;
+$('#out').onclick=()=>sb.auth.signOut();
+document.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{b.disabled=true;
+const r=await api('/api/commands',{method:'POST',body:JSON.stringify({action:b.dataset.a,idem_key:crypto.randomUUID()})});
+$('#m').textContent=r.duplicate?'Already queued.':r.error?'Failed.':'Sent to device…';load()});load()}
+async function load(){const s=await api('/api/status');if(!s.events)return;const t=s.telemetry||{};
+const on=t.updated_at&&Date.now()-new Date(t.updated_at)<120000,f=(v,u)=>v==null?'–':v+u;
+$('#t').innerHTML=`<div><span>Temperature</span><b>${f(t.temp_c,'°C')}</b></div><div><span>Humidity</span><b>${f(t.humidity,'%')}</b></div>
+<div><span>Soil moisture</span><b>${f(t.soil_pct,'%')}</b></div><div><span>Cover</span><b>${t.shade||'–'}</b></div>
+<div><span>Pump</span><b>${t.pump?'On':'Off'}</b></div><div><span>Device</span><b>${on?'Online':'Offline'}</b></div>`;
+const open=s.open.map(c=>c.action);document.querySelectorAll('[data-a]').forEach(b=>b.disabled=open.includes(b.dataset.a));
+$('#ev').innerHTML=s.events.map(e=>`<li><span>${L[e.type]||e.type}${e.detail?.reason?` · ${e.detail.reason}`:''}${e.detail?.result&&e.detail.result!=='ok'?` · ${e.detail.result}`:''}</span><small>${new Date(e.occurred_at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</small></li>`).join('')||'<small>No events yet</small>'}
+(async()=>{const c=await(await fetch('/api/config')).json();sb=supabase.createClient(c.url,c.key);
+sb.auth.onAuthStateChange((_e,s)=>{token=s?.access_token;clearInterval(timer);if(s){dash();timer=setInterval(load,5000)}else login()})})();
+</script></body></html>
